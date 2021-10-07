@@ -85,10 +85,11 @@ impl Network {
     /// * The longest chain is chosen.
     /// * If any two chains have the same height, the one with highest `totalWork` is chosen.
     /// * If the chains have equal [totalWork](struct.Head.html#structfield.totalWork), the chain head which was created earlier is chosen.
-    pub fn get_main_chain(&mut self) -> (Vec<(Block, u128)>, ChainState) {
+    pub fn get_main_chain(&mut self) -> (Vec<(Block, u128)>, HashSet<String>, ChainState) {
         if self.heads.len() == 0 {
             return (
                 vec![],
+                HashSet::new(),
                 ChainState {
                     height: 0,
                     totalWork: 0,
@@ -139,9 +140,11 @@ impl Network {
             .unwrap();
 
         let blocks = &main_chain.blocks;
+        let blocks_set = main_chain.blocks_set.clone();
 
         (
             blocks.clone(),
+            blocks_set,
             ChainState {
                 height: *height,
                 totalWork: *total_work,
@@ -202,11 +205,9 @@ impl Network {
     pub fn init(&mut self, block: Block) -> bool {
         let mut blockchain = Blockchain::new();
         let bhash = block.hash.to_owned();
-        if self.blocks.len() > 0 {
-            if self.forks.contains_key(&bhash) {
-                println!("{{\"error\":\"duplicate hash\"}}");
-                return false;
-            }
+        if self.forks.contains_key(&bhash) || self.blocks_set.contains(&bhash) {
+            println!("{{\"error\":\"duplicate hash\"}}");
+            return false;
         }
         let total_work = u64::pow(16, block.difficulty);
         let timestamp = now();
@@ -222,28 +223,30 @@ impl Network {
             totalWork: total_work,
             hash: bhash.to_owned(),
         });
-        let (main_chain_blocks, main_chain_state) = self.get_main_chain();
+        let (main_chain_blocks, main_chain_blocks_set, main_chain_state) = self.get_main_chain();
         self.blocks = main_chain_blocks;
+        self.blocks_set = main_chain_blocks_set;
         self.state = main_chain_state;
-        self.blocks_set.insert(bhash.to_owned());
-        self.recent_blocks.insert(
-            bhash.to_owned(),
-            (
-                1,
-                timestamp,
-                total_work,
-                block,
-                blockchain.outputs_set.clone(),
-                blockchain.outputs.clone(),
-            ),
-        );
-        if self.recent_blocks_queue.len() == self.recent_count_limit {
-            if let Some(v) = self.recent_blocks_queue.pop_front() {
-                self.recent_blocks.remove(&v.to_owned());
+        // If the block was added to the main chain
+        if self.blocks.last().unwrap().0.hash.to_owned() == bhash.to_owned() {
+            self.recent_blocks.insert(
+                bhash.to_owned(),
+                (
+                    1,
+                    timestamp,
+                    total_work,
+                    block,
+                    blockchain.outputs_set.clone(),
+                    blockchain.outputs.clone(),
+                ),
+            );
+            if self.recent_blocks_queue.len() == self.recent_count_limit {
+                if let Some(v) = self.recent_blocks_queue.pop_front() {
+                    self.recent_blocks.remove(&v.to_owned());
+                }
             }
+            self.recent_blocks_queue.push_back(bhash.to_owned());
         }
-        self.recent_blocks_queue.push_back(bhash.to_owned());
-
         println!("{{\"ok\":[]}}");
 
         true
@@ -368,28 +371,30 @@ impl Network {
             totalWork: predecessor_total_work + u64::pow(16, block.difficulty),
             hash: bhash.to_owned(),
         });
-        let (main_chain_blocks, main_chain_state) = self.get_main_chain();
+        let (main_chain_blocks, main_chain_blocks_set, main_chain_state) = self.get_main_chain();
         self.blocks = main_chain_blocks;
+        self.blocks_set = main_chain_blocks_set;
         self.state = main_chain_state;
-        self.blocks_set.insert(bhash.to_owned());
-        self.recent_blocks.insert(
-            bhash.to_owned(),
-            (
-                predecessor_height + 1,
-                timestamp,
-                predecessor_total_work + u64::pow(16, block.difficulty),
-                block,
-                chain.outputs_set,
-                chain.outputs.clone(),
-            ),
-        );
-        if self.recent_blocks_queue.len() == self.recent_count_limit {
-            if let Some(v) = self.recent_blocks_queue.pop_front() {
-                self.recent_blocks.remove(&v.to_owned());
+        // If the block was added to the main chain
+        if self.blocks.last().unwrap().0.hash.to_owned() == bhash.to_owned() {
+            self.recent_blocks.insert(
+                bhash.to_owned(),
+                (
+                    predecessor_height + 1,
+                    timestamp,
+                    predecessor_total_work + u64::pow(16, block.difficulty),
+                    block,
+                    chain.outputs_set,
+                    chain.outputs.clone(),
+                ),
+            );
+            if self.recent_blocks_queue.len() == self.recent_count_limit {
+                if let Some(v) = self.recent_blocks_queue.pop_front() {
+                    self.recent_blocks.remove(&v.to_owned());
+                }
             }
+            self.recent_blocks_queue.push_back(bhash.to_owned());
         }
-        self.recent_blocks_queue.push_back(bhash.to_owned());
-
         println!("{{\"ok\":[]}}");
 
         true

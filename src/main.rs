@@ -46,24 +46,28 @@ fn handle_commands(data: &str, network: &mut Network) -> Result<()> {
         let icv = init_chain(data, network);
         if icv.is_ok() {
             return icv;
+        } else {
+            println!("{{\"error\":\"invalid command\"}}");
         }
-    }
-    if let Some(field) = val.get("query") {
+    } else if let Some(field) = val.get("query") {
         if field == "state" {
             let _ = network.state();
-        }
-        if field == "heads" {
+        } else if field == "heads" {
             let _ = network.heads();
-        }
-        if field == "print" {
+        } else if field == "print" {
             let _ = network.print_details();
+        } else {
+            println!("{{\"error\":\"invalid command\"}}");
         }
-    }
-    if let Some(_) = val.get("block") {
+    } else if let Some(_) = val.get("block") {
         let sbv = submit_block(data, network);
         if sbv.is_ok() {
             return sbv;
+        } else {
+            println!("{{\"error\":\"invalid command\"}}");
         }
+    } else {
+        println!("{{\"error\":\"invalid command\"}}");
     }
 
     Ok(())
